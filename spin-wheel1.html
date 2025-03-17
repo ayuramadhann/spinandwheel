@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+
+        .wheel-container {
+            position: relative;
+            width: 400px;
+            height: 400px;
+        }
+
+        .wheel {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            position: relative;
+            transition: transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99);
+            transform: rotate(0deg);
+        }
+
+        .wheel-center {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background: #fff;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+        }
+
+        .spinner {
+            position: absolute;
+            top: 45%;
+            right: -8%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-bottom: 20px solid transparent;
+            border-right: 40px solid #ff0000;
+            border-top: 20px solid transparent;
+            z-index: 11;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 300px;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+
+        input {
+            padding: 8px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .items-list {
+            width: 300px;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+
+        .item-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px;
+            margin: 2px 0;
+            background: #f5f5f5;
+            border-radius: 3px;
+        }
+
+        .delete-btn {
+            background: #ff4444;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            padding: 2px 8px;
+            cursor: pointer;
+        }
+
+        .mode-switch {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .mode-btn {
+            flex: 1;
+            background: #666;
+        }
+
+        .mode-btn.active {
+            background: #4CAF50;
+        }
+
+        #history {
+            width: 300px;
+            margin-top: 10px;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 5px;
+        }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+
+        .modal-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            min-width: 300px;
+        }
+
+        .modal-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .keep-btn {
+            background: #4CAF50;
+        }
+
+        .remove-btn {
+            background: #ff4444;
+        }
+
+        .selected-item {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 20px 0;
+            color: #333;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="wheel-container">
+            <div class="spinner"></div>
+            <canvas class="wheel"></canvas>
+            <div class="wheel-center"></div>
+        </div>
+        <div class="controls">
+            <div class="mode-switch">
+                <button class="mode-btn active" id="wheelMode">Wheel Mode</button>
+                <button class="mode-btn" id="randomMode">Random Mode</button>
+            </div>
+            <input type="text" id="itemInput" placeholder="Add item (press Enter)">
+            <button id="spinButton">SPIN</button>
+            <button id="resetButton">Reset Items</button>
+        </div>
+        <div id="result"></div>
+        <div class="items-list" id="itemsList"></div>
+        <div id="history">
+            <strong>Selection History:</strong>
+            <div id="historyList"></div>
+        </div>
+    </div>
+
+    <!-- Selection Modal -->
+    <div id="selectionModal" class="modal">
+        <div class="modal-content">
+            <h2>Selected Item</h2>
+            <div class="selected-item" id="modalItem"></div>
+            <div class="modal-buttons">
+                <button class="keep-btn" onclick="wheel.handleSelection(false)">Keep Item</button>
+                <button class="remove-btn" onclick="wheel.handleSelection(true)">Remove Item</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class SpinWheel {
+            constructor() {
+                this.items = ['Item 1', 'Item 2', 'Item 3', 'Item 4', 'Item 5', 'Item 6'];
+                this.colors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'];
+                this.currentRotation = 0;
+                this.isSpinning = false;
+
+                this.isWheelMode = true;
+                this.history = [];
+                this.selectedIndex = null;
+
+                this.canvas = document.querySelector('.wheel');
+                this.ctx = this.canvas.getContext('2d');
+                this.spinButton = document.getElementById('spinButton');
+                this.resetButton = document.getElementById('resetButton');
+                this.itemInput = document.getElementById('itemInput');
+                this.resultDiv = document.getElementById('result');
+                this.itemsList = document.getElementById('itemsList');
+                this.historyList = document.getElementById('historyList');
+                this.wheelMode = document.getElementById('wheelMode');
+                this.randomMode = document.getElementById('randomMode');
+                this.modal = document.getElementById('selectionModal');
+                this.modalItem = document.getElementById('modalItem');
+
+
+                this.setupCanvas();
+                this.setupEventListeners();
+                this.drawWheel();
+                this.updateItemsList();
+            }
+
+            setupCanvas() {
+                this.canvas.width = 400;
+                this.canvas.height = 400;
+            }
+
+            setupEventListeners() {
+                this.spinButton.addEventListener('click', () => this.spin());
+                this.resetButton.addEventListener('click', () => this.reset());
+                this.itemInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter' && this.itemInput.value.trim()) {
+                        this.addItem(this.itemInput.value.trim());
+                        this.itemInput.value = '';
+                    }
+                });
+
+                this.wheelMode.addEventListener('click', () => this.setMode('wheel'));
+                this.randomMode.addEventListener('click', () => this.setMode('random'));
+
+                // Close modal when clicking outside
+                this.modal.addEventListener('click', (e) => {
+                    if (e.target === this.modal) {
+                        this.closeModal();
+                    }
+                });
+            }
+
+            async fetchItems() {
+                try {
+                    const response = await fetch('/api/items'); // Laravel backend route
+                    const items = await response.json();
+
+                    this.items = items.map(item => item.name); // Extract item names
+                    this.probabilities = items.map(item => item.probability); // Extract probabilities
+                    this.drawWheel();
+                } catch (error) {
+                    console.error('Error fetching items:', error);
+                }
+            }
+
+            setMode(mode) {
+                this.isWheelMode = mode === 'wheel';
+                this.wheelMode.classList.toggle('active', this.isWheelMode);
+                this.randomMode.classList.toggle('active', !this.isWheelMode);
+                this.canvas.style.opacity = this.isWheelMode ? '1' : '0.3';
+            }
+
+            showModal(item, index) {
+                this.selectedIndex = index;
+                this.modalItem.textContent = item;
+                this.modal.style.display = 'block';
+            }
+
+            closeModal() {
+                this.modal.style.display = 'none';
+                this.selectedIndex = null;
+                this.isSpinning = false;
+                this.spinButton.disabled = false;
+            }
+
+            handleSelection(shouldRemove) {
+                if (this.selectedIndex !== null) {
+                    const selectedItem = this.items[this.selectedIndex];
+
+                    if (shouldRemove) {
+                        this.items.splice(this.selectedIndex, 1);
+                        this.drawWheel();
+                        this.updateItemsList();
+                    }
+
+                    this.history.unshift(selectedItem + (shouldRemove ? ' (Removed)' : ' (Kept)'));
+                    if (this.history.length > 10) this.history.pop();
+                    this.updateHistory();
+                }
+
+                this.closeModal();
+            }
+
+            drawWheel() {
+                const radius = this.canvas.width / 2;
+                const arc = (2 * Math.PI) / this.items.length;
+                //arc = sliceangle
+                //size = items.length
+                for (let i = 0; i < this.items.length; i++) {
+                    // Set slice color
+                    this.ctx.fillStyle = this.colors[i];
+                    // Start drawing
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(radius, radius);
+                    this.ctx.arc(radius, radius, radius, i * arc, (i + 1) * arc);
+                    this.ctx.closePath();
+                    this.ctx.fill();
+
+                    // Draw text
+                    this.ctx.save();
+                    this.ctx.translate(radius, radius);
+                    this.ctx.rotate(i * arc + arc / 2);
+                    this.ctx.textAlign = "right";
+                    this.ctx.fillStyle = "#fff";
+                    this.ctx.font = "16px Arial";
+                    this.ctx.fillText(this.items[i], radius / 1.5, 10);
+                    this.ctx.restore();
+                }
+            }
+
+            // drawWheel() {
+            //     // this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            //     // const centerX = this.canvas.width / 2;
+            //     // const centerY = this.canvas.height / 2;
+            //     // const radius = Math.min(centerX, centerY) - 10;
+            //     const radius = this.canvas.width / 2;
+            //     const arc = (2 * Math.PI) / this.items.length;
+            //     //arc = radius
+            //     //size = items.length
+
+            //     this.items.forEach((item, index) => {
+            //         const startAngle = index * arc;
+            //         const endAngle = startAngle + arc;
+
+            //         // Draw sector
+            //         this.ctx.beginPath();
+            //         this.ctx.moveTo(centerX, centerY);
+            //         this.ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+            //         this.ctx.closePath();
+            //         this.ctx.fillStyle = this.colors[index % this.colors.length];
+            //         this.ctx.fill();
+
+            //         // Draw text
+            //         this.ctx.save();
+            //         this.ctx.translate(centerX, centerY);
+            //         this.ctx.rotate(startAngle + arc / 2);
+            //         this.ctx.textAlign = 'right';
+            //         this.ctx.fillStyle = '#fff';
+            //         this.ctx.font = '16px Arial';
+            //         this.ctx.fillText(item, radius - 20, 5);
+            //         this.ctx.restore();
+            //     });
+            // }
+
+            updateItemsList() {
+                this.itemsList.innerHTML = '';
+                this.items.forEach((item, index) => {
+                    const itemRow = document.createElement('div');
+                    itemRow.className = 'item-row';
+                    itemRow.innerHTML = `
+                        <span>${item}</span>
+                        <button class="delete-btn" onclick="wheel.deleteItem(${index})">×</button>
+                    `;
+                    this.itemsList.appendChild(itemRow);
+                });
+            }
+
+            updateHistory() {
+                this.historyList.innerHTML = this.history
+                    .map((item, index) => `${index + 1}. ${item}`)
+                    .join('<br>');
+            }
+
+            deleteItem(index) {
+                if (!this.isSpinning) {
+                    this.items.splice(index, 1);
+                    this.drawWheel();
+                    this.updateItemsList();
+                }
+            }
+
+
+            spin() {
+                if (this.isPinning || this.items.length === 0) return;
+                this.isPinning = true;
+                this.spinButton.disabled = true;
+
+                // Generate a random stop angle between 0 and 360 degrees
+                const randomStop = Math.random() * 360;
+
+                // Total target rotation: Add 10 full rotations (3600 degrees) plus the random stop angle
+                const additionalRotations = 360 * 10; // 10 full rotations
+                const targetRotation = this.currentRotation + additionalRotations + randomStop;
+
+                // Record the starting rotation
+                const startRotation = this.currentRotation;
+
+                // Set animation duration (e.g., 2 seconds)
+                const duration = 2000;
+
+                // Get the current timestamp
+                const startTime = performance.now();
+
+                const radius = this.canvas.width / 2;
+
+                // Animation function
+                const animate = (time) => {
+                    const elapsed = time - startTime; // Time elapsed since animation started
+                    const t = Math.min(elapsed / duration, 1); // Normalized time (0 to 1)
+                    const easeOut = 1 - Math.pow(1 - t, 3); // Ease-out cubic easing function
+
+                    // Calculate the current rotation based on easing
+                    this.currentRotation = startRotation + (targetRotation - startRotation) * easeOut;
+
+                    // Draw the updated wheel
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                    this.ctx.save();
+                    this.ctx.translate(radius, radius);
+                    this.ctx.rotate((this.currentRotation * Math.PI) / 180);
+                    this.ctx.translate(-radius, -radius);
+                    this.drawWheel();
+                    this.ctx.restore();
+
+                    // Continue animating if the animation isn't complete
+                    if (t < 1) {
+                        requestAnimationFrame(animate);
+                    } else {
+                        // Animation complete
+                        this.isPinning = false;
+                        this.spinButton.disabled = false;
+
+                        // Normalize the final angle within 0-360 degrees
+                        const adjustedAngle = (this.currentRotation % 360 + 360) % 360;
+
+                        // Determine the selected item index based on the adjusted angle
+                        const index = Math.floor(this.items.length - (adjustedAngle / (360 / this.items.length)) % this.items.length);
+
+                        // Trigger the modal or callback with the selected item
+                        this.showModal(this.items[index], index);
+                    }
+                };
+
+                // Start the animation
+                requestAnimationFrame(animate);
+            };
+
+
+
+
+            // spin() {
+            //     if (this.isSpinning || this.items.length === 0) return;
+            //     this.isSpinning = true;
+            //     this.spinButton.disabled = true;
+
+
+            //     const selectItem = () => {
+            //         const index = Math.floor(Math.random() * this.items.length);
+            //         const selectedItem = this.items[index];
+            //         this.showModal(selectedItem, index);
+            //     };
+
+            //     if (this.isWheelMode) {
+            //         const extraSpins = 5;
+            //         const targetItem = Math.floor(Math.random() * this.items.length);
+            //         const targetRotation = extraSpins * 360 + (360 / this.items.length) * targetItem;
+
+            //         this.currentRotation += targetRotation;
+            //         this.canvas.style.transform = `rotate(${this.currentRotation}deg)`;
+
+            //         setTimeout(selectItem, 4000);
+            //     } else {
+            //         // Random mode with quick animation
+            //         let flashCount = 0;
+            //         const flashInterval = setInterval(() => {
+            //             this.resultDiv.textContent = `Selected: ${this.items[Math.floor(Math.random() * this.items.length)]}`;
+            //             flashCount++;
+            //             if (flashCount >= 10) {
+            //                 clearInterval(flashInterval);
+            //                 selectItem();
+            //             }
+            //         }, 100);
+            //     }
+            // }
+
+            addItem(item) {
+                if (this.items.length < 12) {
+                    this.items.push(item);
+                    this.drawWheel();
+                    this.updateItemsList();
+                } else {
+                    alert('Maximum 12 items allowed');
+                }
+            }
+
+            reset() {
+                this.items = ['Item 1', 'Item 2', 'Item 3', 'Item 4'];
+                this.currentRotation = 0;
+                this.canvas.style.transform = `rotate(0deg)`;
+                this.drawWheel();
+                this.updateItemsList();
+                this.resultDiv.textContent = '';
+                this.history = [];
+                this.updateHistory();
+                this.closeModal();
+            }
+        }
+
+        // Initialize the wheel
+        const wheel = new SpinWheel();
+    </script>
+</body>
+
+</html>
